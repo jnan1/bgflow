@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 import torch.optim as optim
 import os
 import numpy as np
-from dataloader.maskDataset import MaskDataset
+from dataloader.VIDDataset import MaskDataset
 from network.maskNet import BBoxMaskNet
 # from coord_conv import coord_conv
 # from utils import calculate_iou
@@ -31,11 +31,11 @@ def train(epoch, dataloader, net, s=0):
 		total_iou, total_resets = 0, 0
 		inds = np.random.permutation(len(dataloader))
 		for i, idx in enumerate(inds): #len(dataloader)
-			#try:
-			example = dataloader[idx]
-			#except:
-			#	print(idx)
-			#	example = None
+			try:
+				example = dataloader[idx]
+			except:
+				print(idx)
+				example = None
 			if example == None:
 				continue
 			xs, y = example['feats'], example['gt']
@@ -70,9 +70,9 @@ def train(epoch, dataloader, net, s=0):
 
 
 		print('saving model ...', end='')
-		torch.save(net.state_dict(), '../results/models/train_vid_withoutdetection_vot/ckpt_{}.pth'.format(t))
+		torch.save(net.state_dict(), '../results/models/train_vid_nd/ckpt_{}.pth'.format(t))
 		print('average iou = {} for {} resets in {} examples'.format(total_iou / len(inds), total_resets, len(inds)))
-		# print(' saved')
+		print('saved ../results/models/train_vid/ckpt_{}.pth'.format(t))
 		# eval(dataloader, net)
 
 def eval(dataloader, net):
@@ -94,37 +94,35 @@ def eval(dataloader, net):
 		if example == None:
 			continue
 		inps, y = example['feats'], example['gt']
-		# masks = example['masks']
 		pred_ious = []
-		out_pth = example['pth'].replace('vot_info', 'out_result_train_vid_withoutdetection_nd')
-		out_folder = out_pth[:out_pth.rfind('/')]
-		if not os.path.exists(out_folder):
-			os.makedirs(out_folder)
-		#	out = net(inp).data.cpu().numpy()[0]
-		#	pred_ious.append(out[0].copy())
+		# out_pth = example['pth'].replace('vot_info', 'out_result')
+		# out_folder = out_pth[:out_pth.rfind('/')]
+		# if not os.path.exists(out_folder):
+			# os.makedirs(out_folder)
+			# out = net(inp).data.cpu().numpy()[0]
+			# pred_ious.append(out[0].copy())
 		pred_ious = []
 		gt_iou = np.array(y.cpu().numpy())
 		for idx, inp in enumerate(inps):
 			pred = net(inp)[0].data.cpu().numpy()
 			pred_ious.append(pred)
 			#print(pred[0], gt_iou[idx])
-			#print(pred)
+		#print('max prediction: {}, {}'.format(max(pred_ious),max(gt_iou)))
+		#print('min prediction: {}'.format(min(pred_ious)))
 		
-		pred_ious = np.array(pred_ious)
-		print('saving to ' + out_pth+'_pred.npy')
-		np.save(out_pth+'_pred.npy', pred_ious)
+		# pred_ious = np.array(pred_ious)
+		# print('saving to ' + out_pth+'_pred.npy')
+		# np.save(out_pth+'_pred.npy', pred_ious)
 		# print(np.array(pred_ious[:10]))
 		# print(gt_iou[:10])
 		iou = gt_iou[np.argmax(np.array(pred_ious))]
 		total_iou += iou
 		reset += (iou == 0)
-		video_name, _ = dataloader._info_from_pth(example['pth'])
-		if not video_name == prev_video_name:
-			if video_N > 0:
-				print('finish evaluating {}, avg iou: {}, reset: {}'.format(
-					prev_video_name, video_total_iou / video_N, video_reset))
-			print('evaluating video {}'.format(video_name))
-			prev_video_name = video_name
+		img_path, frame_num, object_type, bbox_dir = dataloader._info_from_pth(example['pth'])
+		if i%1000 == 0 and i >0:
+			print('finish evaluating {}, avg iou: {}, reset: {}'.format(
+					i, video_total_iou / video_N, video_reset))
+			prev_video_name = img_path
 			video_reset = 0
 			video_N = 0
 			video_total_iou = 0
@@ -150,13 +148,13 @@ def main():
 	mask_ds = MaskDataset()
 	net = BBoxMaskNet(input_channels=6)
 	net.cuda()
-	ckpt_num = 6
-	net.load_state_dict(torch.load('../results/models/train_vid_withoutdetection/ckpt_{}.pth'.format(ckpt_num)))
+	ckpt_num = 0
+	#net.load_state_dict(torch.load('../results/models/train_vid_nd/ckpt_{}.pth'.format(ckpt_num)))
 	#eval(mask_ds, net)
-	#test_net(net, mask_ds)
+	# test_net(net, mask_ds)
 	print('start training')
 	np.random.seed(0)
-	train(200, mask_ds, net, ckpt_num+1)
+	train(200, mask_ds, net, ckpt_num)
 
 if __name__ == '__main__':
 	main()

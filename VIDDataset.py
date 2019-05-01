@@ -13,75 +13,42 @@ from normal_loader import VOT
 from data_format import bbox_format
 sys.path.append('/home/jianingq/bgflow/DaSiamRPN/code/jenny')
 from utils import *
+snaps = json.load(open('/home/jianingq/bgflow/DaSiamRPN/code/jenny/dataloader/vid/snippet.json', 'r'))
 class MaskDataset(Dataset):
-    def __init__(self, 
-        # data_dir='/scratch/jianingq/vot_info', 
-        data_dir='/home/jianingq/vot_info', 
-        bbox_dir='/home/jianingq/vot/bbox_more_info/', 
-        vot_root = '/home/jianingq/vot-toolkit/SiamRPN/bgflow/sequences',
-        # vot_root='/scratch/jianingq/vot_data/',
-        # flow_dir='/scratch/jianingq/backward_flow_confidence_vot/'):
-        flow_dir='/home/jianingq/backward_flow_confidence_vot/'):
+    def __init__(self):
         np.random.seed(0)
-        self.data_dir = data_dir
         self.train_data_pth = []
         self.test_data_pth = []
-        self.vot = VOT(vot_root)
-        self.gts = {}
         self.tg_size = [128, 128]
         self.bbox_dir = bbox_dir
         self.flow_dir = flow_dir
 
-        #videos = [os.path.join(self.data_dir, x) for x in os.listdir(self.data_dir)]
-        #videos = ['ants3', 'frisbee']
-        #videos = ['iceskater2', 'iceskater1','ants3', 'frisbee']
+        all_frames = []
+        for s, snap in enumerate(snaps):
+            if(s> 1100):
+                break
+            frames = snap['frame']
+            n_frames = len(frames)
+            print('subset: {} video id: {:04d} / {:04d}'.format(snap['base_path'], count, len(snaps)))
 
-        """
-        videos = ['ants1', 'ants3', 'bag', 'ball1', 'ball2', 'basketball', 'birds1',
-            'blanket', 'bmx', 'bolt1', 'bolt2', 'book', 'butterfly', 'car1',
-            'conduction1', 'crabs1', 'crossing', 'dinosaur', 'drone_across',
-            'drone_flip', 'drone1', 'fernando', 'fish1', 'fish2', 'fish3',
-            'flamingo1', 'frisbee', 'girl', 'glove', 'godfather', 'graduate',
-            'gymnastics1', 'gymnastics2', 'gymnastics3', 'hand', 'handball1',
-            'handball2', 'helicopter', 'iceskater1', 'iceskater2', 'leaves',
-            'matrix', 'motocross1', 'motocross2', 'nature', 'pedestrian1',
-            'rabbit', 'racing', 'road', 'shaking', 'sheep', 'singer2',
-            'singer3', 'soccer1', 'soccer2', 'soldier', 'tiger', 'traffic',
-            'wiper', 'zebrafish1']
-        """
-        """
-        videos = ['ball1', 'basketball', 'birds1','bmx', 'book', 'butterfly', 'fish2', 'glove', 'graduate',
-            'gymnastics2', 'gymnastics3',  'handball1',
-            'handball2',  'motocross1',  'pedestrian1',
-             'road',  'sheep', 'singer2',
-            'soccer2']
-        """
-        #NO LAB FOR ICESKATER2!!!'gymnastics3', 'hand'
-        videos = [ 'gymnastics3', 'hand','iceskater2']
-        videos = [os.path.join(self.data_dir, x) for x in videos]
+            for f, frame in enumerate(frames):
+                img_path = os.path.join(snap['base_path'], frame['img_path'])
+                out_path = img_path.split('.')[0]
+                frame_num = frame['img_path'].split('.')[0]
+                object_type = frame['obj']['c']
+                bbox_dir = os.path.join(snap['base_path'],object_type)
+                #x0 y0 x1 y1
+                current_bbox = frame['obj']['bbox']
+                frame['base_path'] = snap['base_path']
+                all_frames.append(frame)
 
-        videos = [x for x in videos if os.path.isdir(x)]
-        video_names = [x.split('/')[-1] for x in videos]
-        for video_name in video_names:
-            self.gts[video_name] = self.vot.get_gts(video_name)
-        idx = np.random.permutation(len(videos))
-        nTest = len(videos) // 3
-        # nTest = 0
-        #train_idx = idx[nTest:]
-        train_idx = idx
+        idx = np.random.permutation(len(all_frames))
+        nTest = len(all_frames) // 3
+        train_idx = idx[nTest:]
         test_idx = idx[:nTest]
-        for ind, video_dir in enumerate(videos):
-            video_name = video_dir.split('/')[-1]#
-            video_length = self.vot.get_frame_length(video_name)#
-            #frame_ids = [x.split('_')[0] for x in os.listdir(video_dir) if x.endswith('.npy')]
-            frame_ids = [format(xx, '08') for xx in range(0,video_length)]
-            frames = [os.path.join(video_dir, x) for x in set(frame_ids) if not int(x)==0]
-            if ind in train_idx:
-                self.train_data_pth += frames
-            else:
-                print(video_name)
-                self.test_data_pth += frames
-        self.train_data_pth.sort()
+        self.train_data_pth = all_frames[train_idx]
+        self.test_data_pth = all_frames[test_idx]
+        #self.train_data_pth.sort()
         #self.test_data_pth.sort()
         self.test_data_pth = self.train_data_pth
         
@@ -106,10 +73,10 @@ class MaskDataset(Dataset):
         pth = self.test_data_pth[idx]
         return self._load_pth(pth)
 
-    def get_vot_image(self, idx, test=False):
+    def get_vid_image(self, idx, test=False):
         pth = self.train_data_pth[idx] if not test else self.test_data_pth[idx]
-        video_name, frame_num = self._info_from_pth(pth)
-        img = self.vot.get_frames(video_name)[frame_num]
+        img_path, frame_num, object_type, bbox_dir = self._info_from_pth(pth)
+        img = cv2.imread(img_path)
         img = cv2.resize(img, (self.tg_size[1], self.tg_size[0]))
         # cv2.rectangle(img,  (int(gt[0]),int(gt[1])), (int(gt[2]),int(gt[3])), (255,255, 0), 3)
         # cv2.imwrite('results/gt_mask.png', gt_mask[:,:,np.newaxis] * img)
@@ -117,51 +84,52 @@ class MaskDataset(Dataset):
         return img
     
     def _construct_mask(self, pth, prev=False):
-        video_name, frame_num = self._info_from_pth(pth)
+        img_path, frame_num, object_type, bbox_dir = self._info_from_pth(pth)
+        out_path = img_path.split('.')[0]
         # if frame_num > 3:
         #   return
         prev_frame_num = frame_num-1
-        flow = np.load(os.path.join(self.flow_dir, video_name, 
-            format(frame_num, '08')+'_flow.npy'))
+        flow = np.load(os.path.join(out_path+'_flow.npy'))
         print(flow.shape)
         if prev_frame_num == 0:
-            bbox = self.gts[video_name][prev_frame_num]
-            x0, y0, x1, y1 = bbox_format(bbox,'tlxy_wh_2_rect')
+            x0, y0, x1, y1 = pth['obj']['bbox']
             mask = np.zeros([flow.shape[0], flow.shape[1]])
             x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
             mask[y0:y1, x0:x1] = 1
         else:
             if not prev:
-                bboxes, scores, det_scores = self._load_bbox(video_name, prev_frame_num)
+                bboxes, scores, det_scores = self._load_bbox(bbox_dir, prev_frame_num)
                 mask = np.zeros([flow.shape[0], flow.shape[1]])
                 for bbox, score in zip(bboxes, det_scores):
                     x1, y1, w, h = bbox
                     x1, y1, w, h = int(x1), int(y1), int(w), int(h)
                     gaussian_mask = self._gaussian_box(h, w)
-                    #mask[y1:y1+h, x1:x1+w] = np.maximum(mask[y1:y1+h, x1:x1+w],score*gaussian_mask)
-                    mask[y1:y1+h, x1:x1+w] = np.maximum(mask[y1:y1+h, x1:x1+w],gaussian_mask)
+                    mask[y1:y1+h, x1:x1+w] = np.maximum(mask[y1:y1+h, x1:x1+w],score*gaussian_mask)
             else:
-                mask = np.load(os.path.join(self.data_dir, video_name, 
-                    format(prev_frame_num, '08')+'_fgmask_nd.npy'))
+                mask = np.load(os.path.join(bbox_dir,frame_num+'_fgmask.npy'))
         # cv2.imwrite('../results/tests/new_mask.png', mask * 255)
         mask = flow_warp(mask, flow)
-        # rgb_img = self.vot.get_frames(video_name)[frame_num]
-        # mask = cv2.resize(mask, (self.tg_size[1], self.tg_size[0]))
-        # cv2.imwrite('../results/tests/new_warped_mask.png', (mask+0.1)[:,:,np.newaxis] * rgb_img)
+
+        rgb_img = cv2.imread(img_path)
+        mask = cv2.resize(mask, (self.tg_size[1], self.tg_size[0]))
+        cv2.imwrite('../results/tests/new_warped_mask.png', (mask+0.1)[:,:,np.newaxis] * rgb_img)
+
         #if not prev:
         #   print(pth+'_fgmask.npy')
         #   np.save(pth+'_fgmask.npy', mask)
-        if not prev:
-            print(pth+'_fgmask_nd.npy')
-            np.save(pth+'_fgmask_nd.npy', mask)
-        else:
-            print(pth+'_prev_fgmask_nd.npy')
-            np.save(pth+'_prev_fgmask_nd.npy', mask)
+        ##if not prev:
+        ##    print(os.path.join(bbox_dir,frame_num+'_fgmask.npy'))
+        ##    np.save(os.path.join(bbox_dir,frame_num+'_fgmask.npy'), mask)
+        ##else:
+        ##    print(os.path.join(bbox_dir,frame_num+'_prev_fgmask.npy'))
+        ##    np.save(os.path.join(bbox_dir,frame_num+'_prev_fgmask.npy'), mask)
 
     def _info_from_pth(self, pth):
-        video_name = pth.split('/')[-2]
-        frame_num = int(pth.split('/')[-1])
-        return video_name, frame_num
+        img_path = os.path.join(pth['base_path'], pth['img_path'])
+        frame_num = pth['img_path'].split('.')[0]
+        object_type = pth['obj']['c']
+        bbox_dir = os.path.join(pth['base_path'],object_type)
+        return img_path, frame_num, object_type, bbox_dir
 
     def _load_pth(self, pth):
         # print(pth)
@@ -176,9 +144,8 @@ class MaskDataset(Dataset):
         }
         return sample
 
-    def _load_bbox(self, video_name, frame_num):
-        suffix = '{}.txt'.format(format(frame_num, '08'))
-        pth = os.path.join(self.bbox_dir, video_name, suffix)
+    def _load_bbox(self, bbox_dir,frame_num):
+        pth = os.path.join(bbox_dir, frame_num+'.txt')
         f = open(pth, 'r')
         bboxes, det_scores, scores = [], [], []
         for line in f:
@@ -193,18 +160,20 @@ class MaskDataset(Dataset):
             det_scores)
 
     def _load_masks(self, pth):
-        video_name, frame_num = self._info_from_pth(pth)
+        img_path, frame_num, object_type, bbox_dir = self._info_from_pth(pth)
+        out_path = img_path.split('.')[0]
         if frame_num == 0:
             return None
         # load feature masks
-        entropy = np.load(os.path.join(self.flow_dir, video_name, format(frame_num, '08') + '_entropy.npy'))
-        confidence = 1 - entropy.copy()
-        lab = np.load(pth + '_lab.npy')
+
+        entropy = np.load(out_path + '_entropy.npy')
+        confidence =np.load(out_path + '_confidence.npy')
+        lab = np.load(out_path + '_lab.npy')
         
-        fgmask = np.load(pth + '_fgmask_nd.npy')
-        prev_fgmask_pth = pth + '_prev_fgmask_nd.npy'
-        #fgmask = np.load(pth + '_reverse_fgmask.npy')
-        #prev_fgmask_pth = pth + '_prev_reverse_fgmask.npy'
+        fgmask = np.load(os.path.join(bbox_dir,frame_num+'_fgmask.npy'))
+        prev_fgmask_pth = os.path.join(bbox_dir,frame_num+ '_prev_fgmask.npy')
+        #fgmask = np.load(os.path.join(bbox_dir,frame_num+'_reverse_fgmask.npy'))
+        #prev_fgmask_pth = os.path.join(bbox_dir,frame_num+ '_prev_reverse_fgmask.npy') 
 
         if os.path.exists(prev_fgmask_pth):
             prev_fgmask = np.load(prev_fgmask_pth)
@@ -217,7 +186,7 @@ class MaskDataset(Dataset):
         # for i in range(len(masks)):
         #   cv2.imwrite('../results/tests/{}.png'.format(fs[i]), masks[i] * 255)
         h, w = masks[0].shape[:2]
-        
+
         #crop by fg mask
         try:
             x1, y1, x2, y2 = self._crop_out_roi(*masks[-2:])
@@ -237,7 +206,7 @@ class MaskDataset(Dataset):
         video_name, frame_num = self._info_from_pth(pth)
         if frame_num == 0:
             return None
-        bboxes, scores, det_scores = self._load_bbox(video_name, frame_num)
+        bboxes, scores, det_scores = self._load_bbox(bbox_dir,frame_num)
         masks = []
         tg_w, tg_h = self.tg_size
         all_feats = []
@@ -246,7 +215,7 @@ class MaskDataset(Dataset):
             mask = np.zeros([h,w])
             x, y, xp, yp = np.array([x, y, x+bw, y+bh])
             x, y, xp, yp = [int(k) for k in [x, y, xp, yp]]
-            mask[y:yp, x:xp] = 1#det_scores[j]
+            mask[y:yp, x:xp] = det_scores[j]
             new_mask = cv2.resize(mask[y1:y2, x1:x2], (self.tg_size[1], self.tg_size[0]))
             # if j < 10:
             #   print(new_mask.shape)
@@ -256,7 +225,7 @@ class MaskDataset(Dataset):
         
         return all_feats, scores
         
-        """
+        '''
         # rgb_img = self.vot.get_frames(video_name)[frame_num]
         bboxes, scores, det_scores = self._load_bbox(video_name, frame_num)
         tg_w, tg_h = self.tg_size
@@ -284,7 +253,7 @@ class MaskDataset(Dataset):
             all_feats.append(Variable(torch.from_numpy(np.array(feats)).unsqueeze(0).float().cuda()))
         
         return all_feats, scores
-        """
+        '''
 
     def _gaussian_box(self, w, h):
         '''
@@ -328,12 +297,12 @@ class MaskDataset(Dataset):
 def process_masks():
     #compute-0-11
     mask_ds = MaskDataset()
-    # mask_ds.process(4952)
+    mask_ds.process(10)
     # [4951, 13853, 4793]:
-    for i in range(len(mask_ds)):
-        mask_ds.process(i)
-    for i in range(len(mask_ds)):
-        mask_ds.process(i, prev=True)
+    ##for i in range(len(mask_ds)):
+    ##    mask_ds.process(i)
+    ##for i in range(len(mask_ds)):
+    ##    mask_ds.process(i, prev=True)
 
 def test_load_ds():
     mask_ds = MaskDataset(data_dir='/home/jianingq/vot_info')
